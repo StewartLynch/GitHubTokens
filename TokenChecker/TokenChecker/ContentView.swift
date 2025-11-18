@@ -1,3 +1,18 @@
+//
+//----------------------------------------------
+// Original project: TokenChecker
+//
+// Follow me on Mastodon: https://iosdev.space/@StewartLynch
+// Follow me on Threads: https://www.threads.net/@stewartlynch
+// Follow me on Bluesky: https://bsky.app/profile/stewartlynch.bsky.social
+// Follow me on X: https://x.com/StewartLynch
+// Follow me on LinkedIn: https://linkedin.com/in/StewartLynch
+// Email: slynch@createchsol.com
+// Subscribe on YouTube: https://youTube.com/@StewartLynch
+// Buy me a ko-fi:  https://ko-fi.com/StewartLynch
+//----------------------------------------------
+// Copyright © 2025 CreaTECH Solutions (Stewart Lynch). All rights reserved.
+
 import SwiftUI
 
 struct ContentView: View {
@@ -10,7 +25,7 @@ struct ContentView: View {
     @State private var branches: [String] = []
     @State private var selectedBranch: String = ""
     var body: some View {
-        VStack(spacing: 0) {
+        VStack {
             Form {
                 TextField("Owner", text: $owner)
                 TextField("Repostiory", text: $repo)
@@ -93,22 +108,13 @@ struct ContentView: View {
         }
         .padding()
         .onChange(of: owner) {
-            status = ""
-            filePaths = []
-            branches = []
-            selectedBranch = ""
+            reset()
         }
         .onChange(of: repo) {
-            status = ""
-            filePaths = []
-            branches = []
-            selectedBranch = ""
+            reset()
         }
         .onChange(of: token) {
-            status = ""
-            filePaths = []
-            branches = []
-            selectedBranch = ""
+            reset()
         }
         .onChange(of: selectedBranch) { _, newBranch in
             Task {
@@ -117,14 +123,18 @@ struct ContentView: View {
         }
     }
     
-    private func clear() {
+    private func reset() {
         status = ""
-        owner = ""
-        repo = ""
-        token = ""
         filePaths = []
         branches = []
         selectedBranch = ""
+    }
+    
+    private func clear() {
+        owner = ""
+        repo = ""
+        token = ""
+        reset()
     }
     
     private struct RepoInfo: Decodable {
