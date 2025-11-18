@@ -110,7 +110,7 @@ struct ContentView: View {
             branches = []
             selectedBranch = ""
         }
-        .onChange(of: selectedBranch) { newBranch in
+        .onChange(of: selectedBranch) { _, newBranch in
             Task {
                 await loadFilesForBranch(newBranch)
             }
