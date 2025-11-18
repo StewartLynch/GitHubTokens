@@ -58,3 +58,12 @@ You can use my TokenChecker app to test the validity of the token with respect t
 ![AppIcon](assets/AppIcon.png)
 
 ![image-20251117160228399](assets/image-20251117160228399.png)
+
+### Compiled App
+
+You can download the zipped file from this repository (**TokenChecker.zip**)
+
+### Source code
+
+Or you can download the source code and build it yourself. **TokenChecker app folder**
+
