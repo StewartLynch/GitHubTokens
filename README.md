@@ -57,8 +57,6 @@ You can use my TokenChecker app to test the validity of the token with respect t
 
 ![AppIcon](assets/AppIcon.png)
 
-![image-20251117160228399](assets/image-20251117160228399.png)
-
 ### Compiled App
 
 You can download the zipped file from this repository (**TokenChecker.zip**)
@@ -67,3 +65,8 @@ You can download the zipped file from this repository (**TokenChecker.zip**)
 
 Or you can download the source code and build it yourself. **TokenChecker app folder**
 
+This will verify that the repository is accessible and if so, will list all files initially in the default branch,
+
+If there is more than one branch, you will be able to select another branch and see the files in that branch,
+
+![image-20251117210221619](assets/image-20251117210221619.png)

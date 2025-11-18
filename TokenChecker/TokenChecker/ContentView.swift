@@ -7,6 +7,8 @@ struct ContentView: View {
     @State private var showToken = false
     @State private var status = ""
     @State private var filePaths: [String] = []
+    @State private var branches: [String] = []
+    @State private var selectedBranch: String = ""
     var body: some View {
         VStack(spacing: 0) {
             Form {
@@ -47,9 +49,28 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 8)
 
+            if !branches.isEmpty {
+                HStack {
+                    Text("Branch:")
+                    if branches.count == 1 {
+                        Text(branches[0])
+                    } else {
+                        Picker("Branch", selection: $selectedBranch) {
+                            ForEach(branches, id: \.self) { branch in
+                                Text(branch).tag(branch)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 200)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 4)
+            }
+
             if !filePaths.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Files in default branch:")
+                    Text("Files in branch \(selectedBranch.isEmpty ? "HEAD" : selectedBranch):")
                         .font(.headline)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -74,14 +95,25 @@ struct ContentView: View {
         .onChange(of: owner) {
             status = ""
             filePaths = []
+            branches = []
+            selectedBranch = ""
         }
         .onChange(of: repo) {
             status = ""
             filePaths = []
+            branches = []
+            selectedBranch = ""
         }
         .onChange(of: token) {
             status = ""
             filePaths = []
+            branches = []
+            selectedBranch = ""
+        }
+        .onChange(of: selectedBranch) { newBranch in
+            Task {
+                await loadFilesForBranch(newBranch)
+            }
         }
     }
     
@@ -91,8 +123,18 @@ struct ContentView: View {
         repo = ""
         token = ""
         filePaths = []
+        branches = []
+        selectedBranch = ""
     }
     
+    private struct RepoInfo: Decodable {
+        let default_branch: String
+    }
+
+    private struct BranchInfo: Decodable {
+        let name: String
+    }
+
     private struct GitTreeEntry: Decodable {
         let path: String
         let type: String   // "blob", "tree", "commit"
@@ -103,12 +145,48 @@ struct ContentView: View {
         let truncated: Bool
     }
 
-    private func fetchAllFiles(
+    private func fetchBranches(
         owner: String,
         repo: String,
         token: String
+    ) async throws -> [String] {
+        let urlString = "https://api.github.com/repos/\(owner)/\(repo)/branches?per_page=100"
+        guard let url = URL(string: urlString) else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "GitHubAPI",
+                code: http.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode): \(body)"]
+            )
+        }
+
+        let decoder = JSONDecoder()
+        let branches = try decoder.decode([BranchInfo].self, from: data)
+        return branches.map { $0.name }
+    }
+
+    private func fetchAllFiles(
+        owner: String,
+        repo: String,
+        token: String,
+        ref: String
     ) async throws -> (paths: [String], truncated: Bool) {
-        let urlString = "https://api.github.com/repos/\(owner)/\(repo)/git/trees/HEAD?recursive=1"
+        let urlString = "https://api.github.com/repos/\(owner)/\(repo)/git/trees/\(ref)?recursive=1"
         guard let url = URL(string: urlString) else {
             throw URLError(.badURL)
         }
@@ -143,6 +221,35 @@ struct ContentView: View {
         return (files, treeResponse.truncated)
     }
     
+    private func loadFilesForBranch(_ branch: String) async {
+        let trimmedOwner = owner.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedRepo = repo.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !branch.isEmpty,
+              !trimmedOwner.isEmpty,
+              !trimmedRepo.isEmpty,
+              !trimmedToken.isEmpty else {
+            return
+        }
+
+        do {
+            let (paths, truncated) = try await fetchAllFiles(
+                owner: trimmedOwner,
+                repo: trimmedRepo,
+                token: trimmedToken,
+                ref: branch
+            )
+            filePaths = paths.sorted()
+            status = "✅ Token HAS access to \(owner)/\(repo) on branch \(branch)"
+            if truncated {
+                status += "\n⚠️ GitHub tree is truncated; file list may be incomplete."
+            }
+        } catch {
+            status = "✅ Token HAS access to \(owner)/\(repo), but failed to fetch files for branch \(branch): \(error.localizedDescription)"
+        }
+    }
+    
     private func check() async {
         let trimmedOwner = owner.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedRepo = repo.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -170,20 +277,32 @@ struct ContentView: View {
             
             switch http.statusCode {
             case 200:
-                status = "✅ Token HAS access to \(owner)/\(repo)"
-
                 do {
-                    let (paths, truncated) = try await fetchAllFiles(
-                        owner: trimmedOwner,
-                        repo: trimmedRepo,
-                        token: trimmedToken
-                    )
-                    filePaths = paths.sorted()
-                    if truncated {
-                        status += "\n⚠️ GitHub tree is truncated; file list may be incomplete."
+                    // Decode repo info to get default branch
+                    let repoInfo = try JSONDecoder().decode(RepoInfo.self, from: data)
+                    let defaultBranch = repoInfo.default_branch
+                    status = "✅ Token HAS access to \(owner)/\(repo)"
+
+                    do {
+                        let branchNames = try await fetchBranches(
+                            owner: trimmedOwner,
+                            repo: trimmedRepo,
+                            token: trimmedToken
+                        )
+                        branches = branchNames.sorted()
+                        if let initial = branches.contains(defaultBranch) ? defaultBranch : branches.first {
+                            selectedBranch = initial
+                            await loadFilesForBranch(initial)
+                        }
+                    } catch {
+                        status += "\n⚠️ Failed to fetch branches: \(error.localizedDescription)"
+                        // Fallback: still try to load files from default branch/HEAD
+                        await loadFilesForBranch(defaultBranch)
                     }
                 } catch {
-                    status += "\n⚠️ Failed to fetch file list: \(error.localizedDescription)"
+                    status = "✅ Token HAS access to \(owner)/\(repo)"
+                    // Fallback: try to load files from HEAD if repo decode fails
+                    await loadFilesForBranch("HEAD")
                 }
 
                 return
